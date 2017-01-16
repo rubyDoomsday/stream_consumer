@@ -10,21 +10,92 @@ require 'active_support/all' # for time zone helpers
 require 'colorize' # needed for pretty output
 
 Time.zone    = 'Eastern Time (US & Canada)'
-STREAM_HOST  = ENV['STREAM_HOST']
-CUSTOMER_ID  = ENV['CUSTOMER_ID']
 USERNAME     = ENV['USERNAME']
+CUSTOMER_ID  = ENV['CUSTOMER_ID']
 TOKEN        = ENV['TOKEN']
+STREAM_HOST  = ENV['STREAM_HOST']
+
+# custom error
+class StreamServiceError < StandardError
+  def initialize(data)
+    @data = data
+  end
+end
+
+# resource manger
+class Resource
+  attr_accessor :token, :id
+
+  def initialize(token: TOKEN, id: nil, date: Time.zone.now.to_date)
+    raise ArgumentError 'id cannot be nil' unless id.present?
+    @token  = token
+    @id     = id
+    @date   = date
+  end
+
+  def connect
+    set_poke_action
+    set_data_action
+    set_error_action
+    EventMachine.run { stream.listen }
+  end
+
+  private
+
+  # process errors example
+  def set_error_action
+    stream.on_event 'error' do |error|
+      raise StreamServiceError.new(error.data['error'])
+    end
+  end
+
+  # process data example x 2
+  def set_data_action
+    stream.on_event 'data' do |event|
+      puts "data received #{event.time}:\n#{JSON.pretty_generate(event.data)}".green
+    end
+
+    stream.on_event 'data' do |event|
+      puts "RAW:#{event.raw}".blue
+    end
+  end
+
+  # process poke example
+  def set_poke_action
+    stream.on_event 'poke' do |poke|
+      puts poke.type.to_s.yellow
+    end
+  end
+
+  def stream
+    @service ||= StreamService.new(url, headers)
+  end
+
+  def url
+    @host ||= "#{STREAM_HOST}/streams/connect/#{@id}/#{@date}"
+  end
+
+  def headers
+    {
+      'X-Consumer-Username' => USERNAME,
+      'X-Consumer-Custom-ID' => CUSTOMER_ID,
+      'Content-Type' => 'application/json',
+      'Accept' => 'text/event-stream',
+      'Token' => TOKEN,
+      'Service-Name' => 'test'
+    }
+  end
+end
 
 # Stream Service
 class StreamService
-  attr_accessor :id, :date, :callbacks, :buffer, :url
+  attr_accessor :callbacks, :buffer, :url, :headers
 
   # @param stream_id [String] id of the validic stream
   # @param date [String] date as represented YYYY-MM-DD
-  def initialize(stream_id, date: Time.zone.now.to_date)
-    @id = stream_id
-    @date = date
-    @url = "#{STREAM_HOST}/streams/connect/#{@id}/#{@date}"
+  def initialize(url, headers)
+    @url = url
+    @headers = headers
     @buffer = []
     @callbacks = {}
   end
@@ -39,12 +110,7 @@ class StreamService
 
   # connects to SSE stream and listens for data
   def listen
-    http = EM::HttpRequest.new(url)
-                          .get(head: { 'X-Consumer-Username' => USERNAME,
-                                       'X-Consumer-Custom-ID' => CUSTOMER_ID,
-                                       'Token' => TOKEN,
-                                       'Service-Name' => 'test' })
-
+    http = EM::HttpRequest.new(url).get(head: headers)
     http.headers { |header| handle_headers(header) }
     http.stream  { |chunk| handle_stream(chunk) }
     http.errback { |error| handle_error(error) }
@@ -120,35 +186,6 @@ class StreamService
   end
 end
 
-class StreamServiceError < StandardError
-  def initialize(data)
-    @data = data
-  end
-end
-
-EM.run do
-  stream = StreamService.new('5876d5750b11e70001dfd45c')
-
-  # process poke example
-  # stream.on_event 'poke' do |poke|
-  #   puts poke.type.to_s.yellow
-  # end
-
-  # process data example
-  stream.on_event 'data' do |event|
-    puts "data received #{event.time}:\n#{JSON.pretty_generate(event.data)}".green
-  end
-
-  # additional process data example
-  stream.on_event 'data' do |event|
-    puts "RAW:#{event.raw}".blue
-  end
-
-  # process errors example
-  stream.on_event 'error' do |error|
-    raise StreamServiceError.new(error.data['error'])
-  end
-
-  # connect to stream
-  stream.listen
-end
+# execution
+resource = Resource.new(id: '5876d5750b11e70001dfd45c')
+resource.connect
