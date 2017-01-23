@@ -45,25 +45,25 @@ class Resource
   # process errors example
   def set_error_action
     stream.on_event 'error' do |error|
-      raise StreamServiceError.new(error.data['error'])
+      raise StreamServiceError.new(error.raw)
     end
   end
 
   # process data example x 2
   def set_data_action
     stream.on_event 'data' do |event|
-      puts "data received #{event.time}:\n#{JSON.pretty_generate(event.data)}".green
+      puts "\n#{event.time} PROCESSED:\n#{JSON.pretty_generate(event.data)}".green
     end
 
     stream.on_event 'data' do |event|
-      puts "RAW:#{event.raw}".blue
+      puts "\nRAW:#{event.raw}".blue
     end
   end
 
   # process poke example
   def set_poke_action
     stream.on_event 'poke' do |poke|
-      puts poke.type.to_s.yellow
+      print '.'.yellow
     end
   end
 
@@ -91,12 +91,14 @@ end
 class StreamService
   attr_accessor :callbacks, :buffer, :url, :headers
 
+  ERROR_TYPE = 'error'.freeze
+
   # @param stream_id [String] id of the validic stream
   # @param date [String] date as represented YYYY-MM-DD
   def initialize(url, headers)
     @url = url
     @headers = headers
-    @buffer = []
+    @buffer = ''
     @callbacks = {}
   end
 
@@ -110,10 +112,14 @@ class StreamService
 
   # connects to SSE stream and listens for data
   def listen
+    puts 'Listening'.green
     http = EM::HttpRequest.new(url).get(head: headers)
     http.headers { |header| handle_headers(header) }
     http.stream  { |chunk| handle_stream(chunk) }
-    http.errback { |error| handle_error(error) }
+    http.errback do |error|
+      event = EventHelper.new(ERROR_TYPE, error, error)
+      handle_error(event)
+    end
   end
 
   private
@@ -122,41 +128,47 @@ class StreamService
   # @param header [String] http header
   def handle_headers(header)
     unless header.status == 200
-      @callbacks['errors'].each do |error|
-        error.call("failed with status: #{headers.status}")
-      end
+      event = EventHelper.new(ERROR_TYPE, header, header)
+      handle_error(event)
     end
-  end
-
-  # stream handler
-  # @param chunk [String] stream data section
-  def handle_stream(chunk)
-    while index = chunk.index(/\r\n\r\n|\n\n/)
-      raw_data = chunk.slice!(0..index)
-      types = derive('event', raw_data)
-      datas = derive('data', raw_data)
-
-      types.zip(datas).each do |type, data|
-        @buffer << Event.new(type, data, raw_data)
-      end
-    end
-    process_buffer
-  rescue StreamServiceError
-    EM.add_timer(5) { listen }
-  rescue => e
-    puts "Sorry Dave, I can't do that\n#{e}\n#{raw_data}"
   end
 
   # error handler
   # @param error [String] http error
   def handle_error(error)
-    @callbacks['errors'].each { |e| e.call("http error: #{error}") }
+    puts "IT BROKE: #{error.raw}".red
     EM.add_timer(5) { listen }
   end
 
-  # runs event handlers off the queued processed events
+  # stream handler
+  # @param chunk [String] stream data section
+  def handle_stream(chunk)
+    @buffer += chunk
+    events = process_buffer
+    process_events(events)
+  rescue => e
+    rasie RuntimeError.new("Sorry Dave, I can't do that\n#{e}\n#{raw_data}")
+  end
+
+  # processes raw data off the buffer
   def process_buffer
-    while processed_event = @buffer.slice!(0)
+    events = []
+    while index = @buffer.index(/\r\n\r\n|\n\n/)
+      raw_data = @buffer.slice!(0..index)
+      types = derive('event', raw_data)
+      datas = derive('data', raw_data)
+
+      types.zip(datas).each do |type, data|
+        events << Event.new(type, data, raw_data)
+      end
+    end
+    events
+  end
+
+  # runs event handlers off the queued processed events
+  def process_events(events)
+    while processed_event = events.slice!(0)
+      handle_error(processed_event) if processed_event.type == ERROR_TYPE
       next unless @callbacks.key?(processed_event.type)
       @callbacks[processed_event.type].each { |c| c.call(processed_event) }
     end
