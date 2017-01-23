@@ -27,7 +27,7 @@ class Resource
   attr_accessor :token, :id
 
   def initialize(token: TOKEN, id: nil, date: Time.zone.now.to_date)
-    raise ArgumentError 'id cannot be nil' unless id.present?
+    raise ArgumentError.new('id cannot be nil') unless id.present?
     @token  = token
     @id     = id
     @date   = date
@@ -96,6 +96,8 @@ class StreamService
   # @param stream_id [String] id of the validic stream
   # @param date [String] date as represented YYYY-MM-DD
   def initialize(url, headers)
+    raise ArgumentError.new('url is required') unless url.present?
+    raise ArgumentError.new('headers are required') unless headers.present?
     @url = url
     @headers = headers
     @buffer = ''
@@ -147,7 +149,7 @@ class StreamService
     events = process_buffer
     process_events(events)
   rescue => e
-    rasie RuntimeError.new("Sorry Dave, I can't do that\n#{e}\n#{raw_data}")
+    raise RuntimeError.new("Sorry Dave, I can't do that\n#{e}\n#{raw_data}")
   end
 
   # processes raw data off the buffer
