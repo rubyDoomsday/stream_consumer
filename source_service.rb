@@ -33,7 +33,8 @@ class Resource
 
   def connect
     set_poke_action
-    set_data_action
+    # set_data_raw
+    set_data_to_json
     set_error_action
     stream.retry = 5
     EventMachine.run do
@@ -57,11 +58,25 @@ class Resource
   end
 
   # process data example
-  def set_data_action
+  def set_data_raw
     stream.on 'data' do |event|
       begin
         puts 'event: data'.green
         puts event.to_s.green
+        puts ''
+      rescue => e
+        puts "Print Data Error: #{event}\nERROR: #{e}"
+      end
+    end
+  end
+
+  # process data example
+  def set_data_to_json
+    stream.on 'data' do |event|
+      begin
+        data = JSON.parse(event)
+        puts 'event: data_to_json'.blue
+        puts "#{JSON.pretty_generate(data)}".blue
         puts ''
       rescue => e
         puts "Print Data Error: #{event}\nERROR: #{e}"
