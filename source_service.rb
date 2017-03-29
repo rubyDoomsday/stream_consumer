@@ -40,6 +40,7 @@ class Resource
     EventMachine.run do
       stream.start
       puts "Listening to: #{stream.url}".green
+      puts "Using token: #{@token}".green
     end
   end
 
@@ -48,9 +49,9 @@ class Resource
   # process errors example
   def set_error_action
     stream.error do |error|
-      puts "\n#{Time.now} - Serivce Interrupted: #{error}".red
+      puts "\n#{Time.now} - Service Interrupted: #{error}".red
       unless error.downcase.include?('reconnecting')
-        puts "waiting 30 seconds before reconnecting"
+        puts 'Waiting 30 seconds before reconnecting...'
         sleep(30)
         puts "Recovering from failure: #{stream.url}".red
         stream.start
