@@ -33,8 +33,8 @@ class Resource
 
   def connect
     set_poke_action
-    # set_data_raw
-    set_data_to_json
+    set_data_raw
+    # set_data_to_json
     set_error_action
     stream.retry = 5
     EventMachine.run do
@@ -50,6 +50,7 @@ class Resource
     stream.error do |error|
       puts "\n#{Time.now} - Serivce Interrupted: #{error}".red
       unless error.downcase.include?('reconnecting')
+        puts "waiting 30 seconds before reconnecting"
         sleep(30)
         puts "Recovering from failure: #{stream.url}".red
         stream.start
