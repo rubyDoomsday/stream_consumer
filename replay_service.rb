@@ -14,6 +14,7 @@ Time.zone    = 'Eastern Time (US & Canada)'
 USERNAME     = 'test'.freeze
 TOKEN        = ENV['TOKEN']
 STREAM_HOST  = ENV['STREAM_HOST']
+STREAM_ID    = ENV['STREAM_ID'] || nil
 
 # custom error
 class StreamServiceError < StandardError
@@ -26,9 +27,10 @@ end
 class Resource
   attr_accessor :token
 
-  def initialize(token: TOKEN, date: Time.zone.now.to_date)
+  def initialize(token: TOKEN, id: nil, date: Time.zone.now.to_date)
     @token  = token
     @date   = date
+    @id     = id
   end
 
   def connect
@@ -98,7 +100,8 @@ class Resource
   end
 
   def url
-    @host ||= "#{STREAM_HOST}/connect?date=#{@date}"
+    return "#{STREAM_HOST}/streams/#{@id}/connect" unless @id.nil?
+    "#{STREAM_HOST}/replay?date=#{@date}"
   end
 
   def headers
@@ -112,6 +115,6 @@ class Resource
 end
 
 # execution
-resource = Resource.new
+resource = Resource.new(id: STREAM_ID)
 machine = Thread.new { resource.connect }
 machine.join

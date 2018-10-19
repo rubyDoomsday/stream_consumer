@@ -14,6 +14,7 @@ USERNAME     = ENV['USERNAME']
 CUSTOMER_ID  = ENV['CUSTOMER_ID']
 TOKEN        = ENV['TOKEN']
 STREAM_HOST  = ENV['STREAM_HOST']
+STREAM_ID    = ENV['STREAM_ID']
 
 # custom error
 class StreamServiceError < StandardError
@@ -119,7 +120,9 @@ class StreamService
     http.headers { |header| handle_headers(header) }
     http.stream  { |chunk| handle_stream(chunk) }
     http.errback do |error|
-      event = EventHelper.new(ERROR_TYPE, error, error)
+      require 'pry'
+      binding.pry
+      event = Event.new(ERROR_TYPE, error, error)
       handle_error(event)
     end
   end
@@ -130,7 +133,7 @@ class StreamService
   # @param header [String] http header
   def handle_headers(header)
     unless header.status == 200
-      event = EventHelper.new(ERROR_TYPE, header, header)
+      event = Event.new(ERROR_TYPE, header, header)
       handle_error(event)
     end
   end
@@ -201,5 +204,5 @@ class StreamService
 end
 
 # execution
-resource = Resource.new(id: '5876d5750b11e70001dfd45c')
+resource = Resource.new(id: STREAM_ID)
 resource.connect
